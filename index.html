@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Caça Palavras - Tema TI</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap');
+  body {
+    margin: 0;
+    background: linear-gradient(135deg, #0f2027, #2c5364);
+    font-family: 'Roboto Mono', monospace;
+    color: #eee;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    align-items: center;
+    padding: 1.5rem;
+  }
+  h1 {
+    font-weight: 700;
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    text-align: center;
+    color: #00bcd4;
+    text-shadow: 2px 2px 6px #0008;
+    user-select: none;
+  }
+  #game-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(15, 32px);
+    grid-auto-rows: 32px;
+    gap: 3px;
+    margin-bottom: 1.5rem;
+    user-select: none;
+  }
+  .cell {
+    background: #00354f;
+    border-radius: 6px;
+    color: #00bcd4;
+    font-weight: 700;
+    font-size: 1.25rem;
+    text-align: center;
+    line-height: 32px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .cell.selected {
+    background: #00bcd4;
+    color: #00354f;
+  }
+  .cell.found {
+    background: #4caf50;
+    color: #e8f5e9;
+    cursor: default;
+  }
+  #words-list {
+    width: 15rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #00e5ff;
+    margin-bottom: 1rem;
+  }
+  #words-list li {
+    margin: 0.25rem 0;
+  }
+  #words-list li.found {
+    text-decoration: line-through;
+    color: #95e176;
+  }
+  #status {
+    margin-top: 1rem;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #aef3ff;
+    text-align: center;
+    user-select: none;
+  }
+  #btn-restart {
+    margin-top: 1.5rem;
+    padding: 0.75rem 2.5rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #00354f;
+    border: none;
+    border-radius: 10px;
+    background: #00bcd4;
+    cursor: pointer;
+    box-shadow: 0 6px 15px #007c91cc;
+    user-select: none;
+    transition: background-color 0.3s ease;
+  }
+  #btn-restart:hover {
+    background: #0097a7;
+    color: #b2ebf2;
+  }
+  @media (max-width: 500px) {
+    #grid {
+      grid-template-columns: repeat(10, 30px);
+      grid-auto-rows: 30px;
+    }
+    .cell {
+      font-size: 1rem;
+      line-height: 30px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>Caça Palavras - Tema TI</h1>
+
+<div id="game-container">
+  <div id="grid" aria-label="Tabuleiro de caça palavras" role="grid"></div>
+  <ul id="words-list" aria-label="Lista de palavras para encontrar"></ul>
+  <button id="btn-restart" aria-label="Reiniciar jogo">Reiniciar Jogo</button>
+  <div id="status" aria-live="polite"></div>
+</div>
+
+<script>
+  const words = [
+    "CPU",
+    "RAM",
+    "SSD",
+    "HTML",
+    "CSS",
+    "JAVASCRIPT",
+    "LINUX",
+    "FIREWALL",
+    "IP",
+    "HTTP",
+    "GITHUB",
+    "NAVEGADOR",
+    "PROXY",
+    "DOMÍNIO",
+    "BACKEND"
+  ];
+
+  const gridSize = 15;
+  let grid = [];
+  let placedWords = [];
+  const directions = [
+    { x: 1, y: 0 },  // horizontal right
+    { x: 0, y: 1 },  // vertical down
+    { x: 1, y: 1 },  // diagonal down-right
+    { x: -1, y: 0 }, // horizontal left
+    { x: 0, y: -1 }, // vertical up
+    { x: -1, y: -1 } // diagonal up-left
+  ];
+
+  const gridElement = document.getElementById('grid');
+  const wordsListElement = document.getElementById('words-list');
+  const btnRestart = document.getElementById('btn-restart');
+  const statusElement = document.getElementById('status');
+
+  let selectedCells = [];
+  let foundWords = new Set();
+  let isSelecting = false;
+
+  // Initialize grid empty
+  function initGrid() {
+    grid = Array(gridSize).fill(null).map(() => Array(gridSize).fill(''));
+  }
+
+  // Place words into grid randomly
+  function placeWords() {
+    placedWords = [];
+
+    for(let word of words) {
+      word = word.toUpperCase();
+      let placed = false;
+      let attempts = 0;
+
+      while(!placed && attempts < 1000) {
+        attempts++;
+        const dir = directions[Math.floor(Math.random() * directions.length)];
+        const startX = Math.floor(Math.random() * gridSize);
+        const startY = Math.floor(Math.random() * gridSize);
+
+        if(canPlaceWord(word, startX, startY, dir)) {
+          placeWord(word, startX, startY, dir);
+          placedWords.push({ word, startX, startY, dir, found: false });
+          placed = true;
+        }
+      }
+      if(!placed) {
+        console.warn('Palavra não posicionada:', word);
+      }
+    }
+  }
+
+  function canPlaceWord(word, x, y, dir) {
+    let posX = x;
+    let posY = y;
+
+    for(let i=0; i<word.length; i++) {
+      if(posX < 0 || posX >= gridSize || posY < 0 || posY >= gridSize) return false;
+      let letter = grid[posY][posX];
+      if(letter !== '' && letter !== word[i]) return false;
+      posX += dir.x;
+      posY += dir.y;
+    }
+    return true;
+  }
+
+  function placeWord(word, x, y, dir) {
+    let posX = x;
+    let posY = y;
+
+    for(let i=0; i<word.length; i++) {
+      grid[posY][posX] = word[i];
+      posX += dir.x;
+      posY += dir.y;
+    }
+  }
+
+  // Fill empty with random letters
+  function fillEmpty() {
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for(let y=0; y<gridSize; y++) {
+      for(let x=0; x<gridSize; x++) {
+        if(grid[y][x] === '') {
+          grid[y][x] = letters.charAt(Math.floor(Math.random() * letters.length));
+        }
+      }
+    }
+  }
+
+  // Render grid to DOM
+  function renderGrid() {
+    gridElement.innerHTML = '';
+    gridElement.style.gridTemplateColumns = `repeat(${gridSize}, 32px)`;
+    for(let y=0; y<gridSize; y++) {
+      for(let x=0; x<gridSize; x++) {
+        const cell = document.createElement('div');
+        cell.classList.add('cell');
+        cell.textContent = grid[y][x];
+        cell.dataset.x = x;
+        cell.dataset.y = y;
+        cell.setAttribute('role', 'gridcell');
+        cell.setAttribute('tabindex', '0');
+        cell.addEventListener('mousedown', startSelection);
+        cell.addEventListener('mouseenter', continueSelection);
+        cell.addEventListener('mouseup', endSelection);
+        cell.addEventListener('touchstart', startSelection);
+        cell.addEventListener('touchmove', touchMoveSelection);
+        cell.addEventListener('touchend', endSelection);
+        gridElement.appendChild(cell);
+      }
+    }
+  }
+
+  // Render word list
+  function renderWordList() {
+    wordsListElement.innerHTML = '';
+    words.forEach(word => {
+      const li = document.createElement('li');
+      li.textContent = word.toUpperCase();
+      li.id = 'word-' + word.toUpperCase();
+      wordsListElement.appendChild(li);
+    });
+  }
+
+  // Selection handling
+  function getCellFromEvent(e) {
+    if(e.target.classList.contains('cell')) return e.target;
+    return null;
+  }
+
+  function startSelection(e) {
+    e.preventDefault();
+    const cell = getCellFromEvent(e);
+    if(!cell || foundWords.size === words.length) return;
+    clearSelection();
+    isSelecting = true;
+    addCellToSelection(cell);
+  }
+
+  function continueSelection(e) {
+    if(!isSelecting) return;
+    const cell = getCellFromEvent(e);
+    if(!cell) return;
+    addCellToSelection(cell);
+  }
+
+  function endSelection(e) {
+    if(!isSelecting) return;
+    isSelecting = false;
+    checkSelection();
+  }
+
+  function touchMoveSelection(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+    if(elem && elem.classList.contains('cell')) {
+      addCellToSelection(elem);
+    }
+  }
+
+  function clearSelection() {
+    selectedCells.forEach(cell => cell.classList.remove('selected'));
+    selectedCells = [];
+  }
+
+  function addCellToSelection(cell) {
+    if(selectedCells.length > 0) {
+      const lastCell = selectedCells[selectedCells.length - 1];
+      if(!areCellsInStraightLine(lastCell, cell) || selectedCells.includes(cell)) {
+        return;
+      }
+    }
+    selectedCells.push(cell);
+    cell.classList.add('selected');
+  }
+
+  function areCellsInStraightLine(cellA, cellB) {
+    const x1 = +cellA.dataset.x;
+    const y1 = +cellA.dataset.y;
+    const x2 = +cellB.dataset.x;
+    const y2 = +cellB.dataset.y;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+
+    if(dx === 0 || dy === 0) return true; // horizontal or vertical
+    if(Math.abs(dx) === Math.abs(dy)) return true; // diagonal
+    return false;
+  }
+
+  function getSelectedWord() {
+    return selectedCells.map(cell => cell.textContent).join('');
+  }
+
+  function getSelectedWordReverse() {
+    return selectedCells.map(cell => cell.textContent).reverse().join('');
+  }
+
+  function checkSelection() {
+    const word = getSelectedWord();
+    const reverseWord = getSelectedWordReverse();
+
+    for(let i=0; i<placedWords.length; i++) {
+      const pw = placedWords[i];
+      if(pw.found) continue;
+      if(word === pw.word || reverseWord === pw.word) {
+        markWordFound(pw);
+        clearSelection();
+        checkWin();
+        return;
+      }
+    }
+    clearSelection();
+  }
+
+  function markWordFound(wordData) {
+    wordData.found = true;
+    selectedCells.forEach(cell => cell.classList.add('found'));
+    selectedCells.forEach(cell => cell.classList.remove('selected'));
+
+    // Strike through found word in list
+    const li = document.getElementById('word-' + wordData.word);
+    if(li) li.classList.add('found');
+    foundWords.add(wordData.word);
+    statusElement.textContent = `Você encontrou a palavra: ${wordData.word}`;
+  }
+
+  function checkWin() {
+    if(foundWords.size === words.length) {
+      statusElement.textContent = `🎉 Parabéns! Você encontrou todas as palavras!`;
+    }
+  }
+
+  function initGame() {
+    initGrid();
+    placeWords();
+    fillEmpty();
+    renderGrid();
+    renderWordList();
+    foundWords.clear();
+    statusElement.textContent = '';
+    clearSelection();
+  }
+
+  btnRestart.addEventListener('click', initGame);
+
+  initGame();
+</script>
+
+</body>
+</html>
